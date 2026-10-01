@@ -20,7 +20,7 @@ import java.net.URL
 /**
  * Transcriber backed by sherpa-onnx (k2-fsa) running the Moonshine Tiny
  * (English, int8) model. Confirmed against the real sources:
- *  - Kotlin API: sherpa-onnx/kotlin-api/*.kt at tag v1.13.8 (copied into
+ *  - Kotlin API: sherpa-onnx's kotlin-api source files at tag v1.13.8 (copied into
  *    com.k2fsa.sherpa.onnx — package name is load-bearing, the JNI bindings
  *    in the .so are compiled against it, so don't repackage these files).
  *  - Native libs: the official sherpa-onnx-v1.13.8-android.tar.bz2 release
