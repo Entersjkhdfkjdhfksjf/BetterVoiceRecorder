@@ -26,6 +26,30 @@ data class CleanResult(
  */
 class AudioCleaner(private val context: Context) {
 
+    /**
+     * Fetches the Clear model over the network if it isn't cached yet.
+     *
+     * Without this, the model downloads lazily inside the first call to
+     * [clean] instead — i.e. silently, the first time you stop a recording,
+     * on whatever network the watch has at that moment. Calling this once at
+     * app launch (see ClearScribeApp) turns that into a visible "downloading
+     * model" state instead of an unexplained delay or failure mid-recording.
+     *
+     * VERIFY: `isDownloaded()` / `download()` are confirmed on sibling SDKs
+     * in the same family (Emo's docs show exactly this
+     * `if (!emo.isDownloaded()) { emo.download() }` shape) but weren't shown
+     * directly for Clear. If these method names don't exist on `Clear`,
+     * check ai.desertant.clear's public API — the shape should be the same
+     * since it's the same underlying core.
+     */
+    suspend fun ensureModelReady(): Unit = withContext(Dispatchers.IO) {
+        Clear(context).use { clear ->
+            if (!clear.isDownloaded()) {
+                clear.download()
+            }
+        }
+    }
+
     suspend fun clean(samples48k: FloatArray): CleanResult = withContext(Dispatchers.Default) {
         Clear(context).use { clear ->
             val result = clear.enhance(samples48k, 48_000.0)
