@@ -56,9 +56,17 @@ class AudioCleaner(private val context: Context) {
             val result = clear.enhance(samples48k, 48_000.0)
             logResultShape(result)
 
-            val extracted = extractSamples(result)
+            val (fieldUsed, extracted) = extractSamples(result)
+            val inputPeak = samples48k.maxOfOrNull { kotlin.math.abs(it) } ?: 0f
+            val outputPeak = extracted?.maxOfOrNull { kotlin.math.abs(it) } ?: 0f
+            Log.i(
+                TAG,
+                "field used: $fieldUsed | truePeakDbfs=${result.measuredTruePeakDbfs} | " +
+                    "input peak amplitude=$inputPeak, output peak amplitude=$outputPeak " +
+                    "(0.0-1.0 scale; if output is near 0 while input isn't, that field is wrong or empty)"
+            )
             if (extracted == null) {
-                Log.w(TAG, "Could not find an audio field on Result — returning RAW (uncleaned) audio. See the field dump above and wire the real one in.")
+                Log.w(TAG, "No candidate field matched a non-empty FloatArray — returning RAW (uncleaned) audio.")
             }
             CleanResult(
                 samples48k = extracted ?: samples48k,
@@ -77,27 +85,27 @@ class AudioCleaner(private val context: Context) {
     /**
      * Tries the field-name candidates the SDK's naming conventions suggest
      * (mono "samples", a 2D "channels" array indexed [0], etc.) via
-     * reflection, so this works the moment the real name is confirmed from
-     * the log above without another guess-and-recompile cycle. Returns null
-     * if none match, in which case [clean] falls back to raw audio.
+     * reflection. Returns the field name actually used (or null) alongside
+     * the array, so the log is unambiguous about which path ran — not just
+     * that *a* field exists, but that *this specific one* was picked and
+     * whether it actually held signal (see the peak-amplitude log above).
      */
-    @Suppress("UNCHECKED_CAST")
-    private fun extractSamples(result: Any): FloatArray? {
+    private fun extractSamples(result: Any): Pair<String?, FloatArray?> {
         val klass = result::class.java
         for (name in listOf("samples", "audio", "wav", "pcm", "output")) {
             runCatching {
                 val f = klass.getDeclaredField(name).apply { isAccessible = true }
-                (f.get(result) as? FloatArray)?.let { return it }
+                (f.get(result) as? FloatArray)?.takeIf { it.isNotEmpty() }?.let { return name to it }
             }
         }
         runCatching {
             val f = klass.getDeclaredField("channels").apply { isAccessible = true }
             when (val v = f.get(result)) {
-                is Array<*> -> (v.firstOrNull() as? FloatArray)?.let { return it }
-                is List<*> -> (v.firstOrNull() as? FloatArray)?.let { return it }
+                is Array<*> -> (v.firstOrNull() as? FloatArray)?.takeIf { it.isNotEmpty() }?.let { return "channels[0]" to it }
+                is List<*> -> (v.firstOrNull() as? FloatArray)?.takeIf { it.isNotEmpty() }?.let { return "channels[0]" to it }
             }
         }
-        return null
+        return null to null
     }
 
     companion object {
