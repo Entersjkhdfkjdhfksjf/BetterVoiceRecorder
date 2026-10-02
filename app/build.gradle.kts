@@ -50,7 +50,7 @@ dependencies {
     implementation("androidx.wear.compose:compose-material:1.4.0")
     implementation("androidx.wear.compose:compose-foundation:1.4.0")
     implementation("androidx.activity:activity-compose:1.9.2")
-    implementation("androidx.compose.material:material-icons-core:1.6.8")
+    implementation("androidx.compose.material:material-icons-extended:1.6.8")
     implementation("androidx.compose.material:material:1.6.8")
     implementation("org.apache.commons:commons-compress:1.26.0")
     implementation("androidx.core:core-ktx:1.13.1")
