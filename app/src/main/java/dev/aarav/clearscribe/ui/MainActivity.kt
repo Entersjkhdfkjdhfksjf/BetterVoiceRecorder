@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
@@ -18,6 +20,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +48,11 @@ import dev.aarav.clearscribe.ModelReadyState
 import dev.aarav.clearscribe.data.Recording
 import dev.aarav.clearscribe.playback.PlaybackState
 import dev.aarav.clearscribe.record.RecorderService
+import dev.aarav.clearscribe.record.computeWaveformPeaks
+import dev.aarav.clearscribe.record.readWavAsFloat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 
 class MainActivity : ComponentActivity() {
 
@@ -166,9 +174,17 @@ fun RecordingDetailScreen(
     onShare: () -> Unit,
     onBack: () -> Unit,
 ) {
-    Scaffold(timeText = { TimeText() }) {
+    val scrollState = rememberScrollState()
+
+    Scaffold(
+        timeText = { TimeText() },
+        positionIndicator = { PositionIndicator(scrollState = scrollState) },
+    ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
+                .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -182,18 +198,25 @@ fun RecordingDetailScreen(
                 recording.durationMs.toInt()
             }
 
-            // Wear Compose Material 1.4 has no built-in Slider; this uses
-            // Compose Foundation's generic Material Slider, which renders
-            // (round watches included) but isn't Wear-styled. Swap for
-            // androidx.wear.compose.material.InlineSlider for native
-            // step-button styling if you want that look instead of a
-            // continuous drag-to-scrub bar.
-            androidx.compose.material.Slider(
-                value = position.toFloat().coerceIn(0f, duration.toFloat().coerceAtLeast(1f)),
-                onValueChange = { onSeek(it.toInt()) },
-                valueRange = 0f..duration.toFloat().coerceAtLeast(1f),
-                modifier = Modifier.fillMaxWidth(),
-            )
+            var peaks by remember(recording.audioPath) {
+                mutableStateOf<FloatArray?>(null)
+            }
+            LaunchedEffect(recording.audioPath) {
+                peaks = withContext(Dispatchers.IO) {
+                    val samples = readWavAsFloat(File(recording.audioPath))
+                    computeWaveformPeaks(samples, buckets = 60)
+                }
+            }
+            val currentPeaks = peaks
+            if (currentPeaks != null) {
+                Waveform(
+                    peaks = currentPeaks,
+                    progress = if (duration > 0) position.toFloat() / duration else 0f,
+                    onSeek = { fraction -> onSeek((fraction * duration).toInt()) },
+                )
+            } else {
+                Text("Loading waveform…")
+            }
             Text("${formatMs(position)} / ${formatMs(duration)}")
 
             Chip(

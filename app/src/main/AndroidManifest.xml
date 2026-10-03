@@ -3,6 +3,13 @@
 
     <uses-feature android:name="android.hardware.type.watch" />
 
+    <!-- Needed so resolveActivity() can see LocalSend at all (Android 11+
+         package visibility) — without this, ShareRecording would always
+         think LocalSend isn't installed, even when it is. -->
+    <queries>
+        <package android:name="org.localsend.localsend_app" />
+    </queries>
+
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

@@ -94,14 +94,30 @@ class SherpaMoonshineTranscriber(private val context: Context) : Transcriber {
     }
 
     private fun downloadTo(url: String, dest: File) {
-        val connection = URL(url).openConnection() as HttpURLConnection
-        connection.instanceFollowRedirects = true
-        connection.connect()
-        check(connection.responseCode in 200..299) {
-            "Model download failed: HTTP ${connection.responseCode} for $url"
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            instanceFollowRedirects = true
+            connectTimeout = 15_000
+            // The actual transfer (~103 MB for Moonshine) can legitimately take
+            // a while on a slow or Bluetooth-shared watch connection, so this
+            // is a stall timeout (time between bytes), not a total-transfer cap.
+            readTimeout = 30_000
         }
-        connection.inputStream.use { input ->
-            FileOutputStream(dest).use { output -> input.copyTo(output) }
+        try {
+            connection.connect()
+            check(connection.responseCode in 200..299) {
+                "Model download failed: HTTP ${connection.responseCode} for $url"
+            }
+            connection.inputStream.use { input ->
+                FileOutputStream(dest).use { output -> input.copyTo(output) }
+            }
+        } catch (e: java.net.SocketTimeoutException) {
+            throw java.io.IOException(
+                "Model download timed out (no data for 30s) — check the watch has a working " +
+                    "internet connection, not just a Bluetooth link to the phone. URL: $url",
+                e,
+            )
+        } finally {
+            connection.disconnect()
         }
     }
 
