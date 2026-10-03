@@ -101,6 +101,10 @@ class SherpaMoonshineTranscriber(private val context: Context) : Transcriber {
             // a while on a slow or Bluetooth-shared watch connection, so this
             // is a stall timeout (time between bytes), not a total-transfer cap.
             readTimeout = 30_000
+            // GitHub's release-asset CDN has been inconsistent with the
+            // default Java HttpURLConnection UA in the past — set an
+            // explicit one rather than chase a CDN-side rejection blind.
+            setRequestProperty("User-Agent", "ClearScribe-Android/1.0")
         }
         try {
             connection.connect()
