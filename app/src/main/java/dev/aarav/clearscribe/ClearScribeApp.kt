@@ -63,17 +63,19 @@ class ClearScribeApp : Application() {
         // stop-and-process step. Clear is ~9.3 MB; Moonshine tiny is ~120 MB,
         // so expect the second step to take meaningfully longer.
         appScope.launch {
+            var step = "cleanup model"
             try {
-                _modelReadyState.value = ModelReadyState.Downloading("cleanup model")
+                _modelReadyState.value = ModelReadyState.Downloading(step)
                 AudioCleaner(applicationContext).ensureModelReady()
 
-                _modelReadyState.value = ModelReadyState.Downloading("transcription model")
+                step = "transcription model"
+                _modelReadyState.value = ModelReadyState.Downloading(step)
                 sherpaTranscriber.ensureModelReady()
 
                 _modelReadyState.value = ModelReadyState.Ready
             } catch (e: Throwable) {
-                Log.e("ClearScribeApp", "Model download failed", e)
-                _modelReadyState.value = ModelReadyState.Failed("model download", e)
+                Log.e("ClearScribeApp", "Model download failed during: $step", e)
+                _modelReadyState.value = ModelReadyState.Failed(step, e)
             }
         }
     }
