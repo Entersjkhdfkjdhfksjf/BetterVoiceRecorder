@@ -15,6 +15,22 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+
+        // Clear, LiteRT, and sherpa-onnx's native libs are only bundled for
+        // arm64-v8a and x86_64 (what we actually copied in). A dependency
+        // incidentally pulled in armeabi-v7a/x86 versions of ONE unrelated
+        // lib (androidx.graphics.path), leaving those ABI folders partially
+        // populated. If a device's system picks one of those as its primary
+        // install ABI (some Wear OS watches default to 32-bit even on a
+        // 64-bit chip, for memory savings), every other native lib fails to
+        // load with "library not found" — since Android only searches the
+        // one ABI directory it committed to at install time, never merges
+        // across them. Restricting abiFilters removes armeabi-v7a/x86 as
+        // install options entirely, forcing arm64-v8a (or x86_64 in the
+        // emulator) where everything is actually present.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
     }
 
     buildTypes {
