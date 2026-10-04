@@ -28,8 +28,6 @@ data class Recording(
     val audioPath: String,
     val startedAt: Instant,
     val durationMs: Long,
-    /** Clear's reported true-peak dBFS for the enhanced audio, for debugging/QA. */
-    val measuredTruePeakDbfs: Double? = null,
 )
 
 class Converters {
@@ -55,7 +53,7 @@ interface RecordingDao {
     suspend fun delete(id: Long)
 }
 
-@Database(entities = [Recording::class], version = 1, exportSchema = false)
+@Database(entities = [Recording::class], version = 2, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class ClearScribeDatabase : RoomDatabase() {
     abstract fun recordingDao(): RecordingDao

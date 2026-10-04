@@ -5,9 +5,9 @@ import android.util.Log
 import androidx.room.Room
 import dev.aarav.clearscribe.data.ClearScribeDatabase
 import dev.aarav.clearscribe.data.RecordingRepository
-import dev.aarav.clearscribe.pipeline.AudioCleaner
 import dev.aarav.clearscribe.pipeline.FirstSentencesSummarizer
 import dev.aarav.clearscribe.pipeline.GenericTitleProvider
+import dev.aarav.clearscribe.pipeline.GtcrnDenoiser
 import dev.aarav.clearscribe.pipeline.SherpaMoonshineTranscriber
 import dev.aarav.clearscribe.pipeline.Summarizer
 import dev.aarav.clearscribe.pipeline.TitleProvider
@@ -21,13 +21,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
- * Overall app readiness. Deliberately tracks ONLY the transcription model —
- * that's the one thing recording genuinely can't work without. Cleanup
- * (Clear) is best-effort: see [AudioCleaner.isAvailable] and
- * [ClearScribeApp.cleanupAvailable] for that separately, since a device
- * that can't run Clear (confirmed real: some Wear OS devices are locked to
- * a 32-bit userspace, and Clear's native libs have only ever shown up for
- * arm64-v8a/x86_64) should still be able to record and transcribe.
+ * Overall app readiness, gated on the transcription model only — that's the
+ * one thing recording genuinely can't work without. Cleanup (GTCRN) is
+ * tracked separately via [ClearScribeApp.cleanupAvailable]: it should be
+ * reliable (same native lib as transcription, confirmed 32-bit support),
+ * but kept non-blocking anyway in case a given device still can't load it
+ * for some other reason.
  */
 sealed interface ModelReadyState {
     data object Checking : ModelReadyState
@@ -45,7 +44,7 @@ class ClearScribeApp : Application() {
     lateinit var repository: RecordingRepository
         private set
 
-    lateinit var audioCleaner: AudioCleaner
+    lateinit var denoiser: GtcrnDenoiser
         private set
     private lateinit var sherpaTranscriber: SherpaMoonshineTranscriber
     lateinit var transcriber: Transcriber
@@ -66,20 +65,19 @@ class ClearScribeApp : Application() {
     override fun onCreate() {
         super.onCreate()
         val db = Room.databaseBuilder(this, ClearScribeDatabase::class.java, "clearscribe.db")
+            .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
         repository = RecordingRepository(db.recordingDao())
 
-        audioCleaner = AudioCleaner(applicationContext)
+        denoiser = GtcrnDenoiser(applicationContext)
         sherpaTranscriber = SherpaMoonshineTranscriber(applicationContext)
         transcriber = sherpaTranscriber
 
         appScope.launch {
-            // Clear is best-effort and must never block the rest of setup —
-            // ensureModelReady() already catches its own failures (network,
-            // or a device with no 32-bit Clear build) and returns false
-            // rather than throwing.
+            // Non-blocking: ensureModelReady() catches its own failures and
+            // returns false rather than throwing.
             _modelReadyState.value = ModelReadyState.Downloading("cleanup model")
-            _cleanupAvailable.value = audioCleaner.ensureModelReady()
+            _cleanupAvailable.value = denoiser.ensureModelReady()
 
             try {
                 _modelReadyState.value = ModelReadyState.Downloading("transcription model")

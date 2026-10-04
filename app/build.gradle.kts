@@ -58,10 +58,11 @@ android {
 }
 
 dependencies {
-    // --- Desert Ant Labs: Clear (speech enhancement) ---
-    // Confirmed version from the SDK snippet you received; docs page currently shows 3.1.0,
-    // so if 3.5.0 fails to resolve, fall back to 3.1.0 and check Maven Central for the latest.
-    implementation("ai.desertant:clear:3.5.0")
+    // Clear (Desert Ant Labs) retired: confirmed 32-bit-locked Wear OS
+    // devices can't load it (no armeabi-v7a native build across every
+    // build we checked), and its enhanced-audio API field was never
+    // confirmed despite repeated attempts. Replaced by GtcrnDenoiser,
+    // which reuses sherpa-onnx's already-bundled native lib (below).
 
     // --- Wear OS / Compose ---
     implementation("androidx.wear.compose:compose-material:1.4.0")

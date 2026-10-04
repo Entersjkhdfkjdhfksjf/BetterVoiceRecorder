@@ -16,7 +16,6 @@ import androidx.core.app.NotificationCompat
 import androidx.wear.ongoing.OngoingActivity
 import androidx.wear.ongoing.Status
 import dev.aarav.clearscribe.data.Recording
-import dev.aarav.clearscribe.pipeline.AudioCleaner
 import dev.aarav.clearscribe.ClearScribeApp
 import dev.aarav.clearscribe.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
@@ -114,21 +113,13 @@ class RecorderService : Service() {
             val t0 = System.currentTimeMillis()
             val raw48k = readPcm16AsFloat(file)
 
-            val cleaner = app.audioCleaner
-            val cleaned = try {
-                cleaner.clean(raw48k)
+            val cleanSamples = try {
+                app.denoiser.clean(raw48k, sampleRate)
             } catch (e: Throwable) {
-                // See the TODO in AudioCleaner: this will throw until the
-                // enhanced-samples field is confirmed and wired in.
-                Log.e(TAG, "Clear pass failed", e)
-                null
+                Log.e(TAG, "GTCRN denoise pass failed — using raw audio", e)
+                raw48k
             }
-            val cleanSamples = cleaned?.samples48k ?: raw48k
-            Log.i(
-                TAG,
-                "Clear pass: ${System.currentTimeMillis() - t0} ms, " +
-                    "truePeakDbfs=${cleaned?.measuredTruePeakDbfs}"
-            )
+            Log.i(TAG, "Denoise pass: ${System.currentTimeMillis() - t0} ms")
 
             val wavFile = File(filesDir, "rec_${startedAt.toEpochMilli()}.wav")
             writeWav(cleanSamples, sampleRate, wavFile)
@@ -146,7 +137,6 @@ class RecorderService : Service() {
                     audioPath = wavFile.absolutePath,
                     startedAt = startedAt,
                     durationMs = (raw48k.size.toLong() * 1000) / sampleRate,
-                    measuredTruePeakDbfs = cleaned?.measuredTruePeakDbfs,
                 )
             )
 

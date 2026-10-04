@@ -44,7 +44,7 @@ class SherpaMoonshineTranscriber(private val context: Context) : Transcriber {
     private val recognizerLock = Mutex()
     @Volatile private var recognizer: OfflineRecognizer? = null
 
-    /** Call once at app launch, same pattern as AudioCleaner.ensureModelReady(). */
+    /** Call once at app launch, same pattern as GtcrnDenoiser.ensureModelReady(). */
     suspend fun ensureModelReady() = withContext(Dispatchers.IO) {
         if (tokensFile.exists()) return@withContext // already extracted
 
