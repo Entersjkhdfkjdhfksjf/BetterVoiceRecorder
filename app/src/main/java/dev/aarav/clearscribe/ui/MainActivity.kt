@@ -75,12 +75,14 @@ class MainActivity : ComponentActivity() {
                 val recordings by app.repository.observeAll().collectAsState(initial = emptyList())
                 val playback by app.player.state.collectAsState()
                 val modelState by app.modelReadyState.collectAsState()
+                val cleanupAvailable by app.cleanupAvailable.collectAsState()
 
                 val current = selected
                 if (current == null) {
                     RecordingListScreen(
                         recordings = recordings,
                         modelState = modelState,
+                        cleanupAvailable = cleanupAvailable,
                         onStart = {
                             startService(Intent(this, RecorderService::class.java).setAction(RecorderService.ACTION_START))
                         },
@@ -108,6 +110,7 @@ class MainActivity : ComponentActivity() {
 fun RecordingListScreen(
     recordings: List<Recording>,
     modelState: ModelReadyState,
+    cleanupAvailable: Boolean?,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onOpen: (Recording) -> Unit,
@@ -133,6 +136,14 @@ fun RecordingListScreen(
                     Text("Setup failed: ${modelState.what}", modifier = Modifier.padding(4.dp))
                 }
                 else -> Unit
+            }
+            if (cleanupAvailable == false) {
+                item {
+                    Text(
+                        "Cleanup unavailable on this device — recording raw audio",
+                        modifier = Modifier.padding(4.dp),
+                    )
+                }
             }
             item {
                 Chip(

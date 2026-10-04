@@ -114,7 +114,7 @@ class RecorderService : Service() {
             val t0 = System.currentTimeMillis()
             val raw48k = readPcm16AsFloat(file)
 
-            val cleaner = AudioCleaner(applicationContext)
+            val cleaner = app.audioCleaner
             val cleaned = try {
                 cleaner.clean(raw48k)
             } catch (e: Throwable) {

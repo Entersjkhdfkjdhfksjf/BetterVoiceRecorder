@@ -16,20 +16,21 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        // Clear, LiteRT, and sherpa-onnx's native libs are only bundled for
-        // arm64-v8a and x86_64 (what we actually copied in). A dependency
-        // incidentally pulled in armeabi-v7a/x86 versions of ONE unrelated
-        // lib (androidx.graphics.path), leaving those ABI folders partially
-        // populated. If a device's system picks one of those as its primary
-        // install ABI (some Wear OS watches default to 32-bit even on a
-        // 64-bit chip, for memory savings), every other native lib fails to
-        // load with "library not found" — since Android only searches the
-        // one ABI directory it committed to at install time, never merges
-        // across them. Restricting abiFilters removes armeabi-v7a/x86 as
-        // install options entirely, forcing arm64-v8a (or x86_64 in the
-        // emulator) where everything is actually present.
+        // Confirmed (user's device): some Galaxy Watches are locked to a
+        // 32-bit (armeabi-v7a) userspace by Samsung even on 64-bit-capable
+        // chips — a recent update removed 64-bit support that One UI 8
+        // Watch previously had. Without armeabi-v7a listed here, the app
+        // can't install at all on such a device ("not compatible with your
+        // phone"). sherpa-onnx's official release does ship armeabi-v7a
+        // libs (copied into jniLibs/armeabi-v7a/ alongside arm64-v8a /
+        // x86_64), so transcription can work in 32-bit mode. Clear's AAR
+        // has only ever shown arm64-v8a/x86_64 native libs in every build
+        // so far — if it genuinely has no 32-bit build, Clear will be
+        // unavailable on this device regardless of this setting; see
+        // AudioCleaner/ClearScribeApp for how that's now handled as a
+        // non-fatal, gracefully-degraded condition rather than a blocker.
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
     }
 

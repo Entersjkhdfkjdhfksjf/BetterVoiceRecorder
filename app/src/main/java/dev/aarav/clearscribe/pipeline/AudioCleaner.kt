@@ -42,14 +42,43 @@ class AudioCleaner(private val context: Context) {
      * directly for Clear. If these method names don't exist on `Clear`,
      * check ai.desertant.clear's public API — the shape should be the same
      * since it's the same underlying core.
+     *
+     * NON-FATAL BY DESIGN: confirmed that some Wear OS devices are locked to
+     * a 32-bit userspace, and Clear's native libraries have only ever shown
+     * up for arm64-v8a/x86_64 across every build so far — so Clear may be
+     * permanently unavailable on such a device, independent of anything in
+     * this app. This must not block the rest of setup (transcription has
+     * nothing to do with Clear): any failure here — network, native-library
+     * load, whatever — is logged and swallowed. [isAvailable] reflects
+     * whether it actually came up; [clean] already falls back to raw audio
+     * when Clear fails per-call, so this just avoids the same failure also
+     * wedging app startup.
      */
-    suspend fun ensureModelReady(): Unit = withContext(Dispatchers.IO) {
-        Clear(context).use { clear ->
-            if (!clear.isDownloaded()) {
-                clear.download()
+    suspend fun ensureModelReady(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            Clear(context).use { clear ->
+                if (!clear.isDownloaded()) {
+                    clear.download()
+                }
             }
+            isAvailable = true
+            true
+        } catch (e: Throwable) {
+            Log.w(
+                TAG,
+                "Clear unavailable on this device (network issue, or — if this is a 32-bit-only " +
+                    "Wear OS device — Clear may simply have no armeabi-v7a build). Recordings will " +
+                    "use raw audio. Cause: ${e::class.simpleName}: ${e.message}"
+            )
+            isAvailable = false
+            false
         }
     }
+
+    /** True once [ensureModelReady] has confirmed Clear actually works on this device. */
+    @Volatile
+    var isAvailable: Boolean = false
+        private set
 
     suspend fun clean(samples48k: FloatArray): CleanResult = withContext(Dispatchers.Default) {
         Clear(context).use { clear ->
