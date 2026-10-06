@@ -13,6 +13,7 @@ import dev.aarav.clearscribe.pipeline.Summarizer
 import dev.aarav.clearscribe.pipeline.TitleProvider
 import dev.aarav.clearscribe.pipeline.Transcriber
 import dev.aarav.clearscribe.playback.RecordingPlayer
+import dev.aarav.clearscribe.ui.SettingsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -21,15 +22,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
- * Overall app readiness, gated on the transcription model only — that's the
- * one thing recording genuinely can't work without. Cleanup (GTCRN) is
- * tracked separately via [ClearScribeApp.cleanupAvailable]: it should be
- * reliable (same native lib as transcription, confirmed 32-bit support),
- * but kept non-blocking anyway in case a given device still can't load it
- * for some other reason.
+ * Overall app readiness, gated on the transcription model only. Starts at
+ * [NotRequested] and stays there until the user explicitly triggers
+ * [ClearScribeApp.prepareModels] from Settings — models are never fetched
+ * automatically on first install. On later launches, if the user has
+ * prepared at least once before, prepare re-runs automatically — but by
+ * then everything is already cached locally, so that's a fast local load,
+ * not a fresh download, and doesn't re-prompt the user every time.
  */
 sealed interface ModelReadyState {
-    data object Checking : ModelReadyState
+    data object NotRequested : ModelReadyState
     data class Downloading(val what: String) : ModelReadyState
     data object Ready : ModelReadyState
     data class Failed(val what: String, val error: Throwable) : ModelReadyState
@@ -42,6 +44,8 @@ sealed interface ModelReadyState {
 class ClearScribeApp : Application() {
 
     lateinit var repository: RecordingRepository
+        private set
+    lateinit var settings: SettingsStore
         private set
 
     lateinit var denoiser: GtcrnDenoiser
@@ -56,7 +60,7 @@ class ClearScribeApp : Application() {
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    private val _modelReadyState = MutableStateFlow<ModelReadyState>(ModelReadyState.Checking)
+    private val _modelReadyState = MutableStateFlow<ModelReadyState>(ModelReadyState.NotRequested)
     val modelReadyState: StateFlow<ModelReadyState> = _modelReadyState
 
     private val _cleanupAvailable = MutableStateFlow<Boolean?>(null) // null = not checked yet
@@ -68,14 +72,23 @@ class ClearScribeApp : Application() {
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
         repository = RecordingRepository(db.recordingDao())
+        settings = SettingsStore(applicationContext)
 
         denoiser = GtcrnDenoiser(applicationContext)
         sherpaTranscriber = SherpaMoonshineTranscriber(applicationContext)
         transcriber = sherpaTranscriber
 
+        // Only auto-run if the user has explicitly prepared at least once
+        // before (see SettingsStore) — in that case everything is already
+        // cached on disk, so this is a fast local load, not a download.
+        if (settings.modelsEverPrepared) {
+            prepareModels()
+        }
+    }
+
+    /** Explicit, user-triggered (Settings screen) model preparation. Safe to call again if already Ready. */
+    fun prepareModels() {
         appScope.launch {
-            // Non-blocking: ensureModelReady() catches its own failures and
-            // returns false rather than throwing.
             _modelReadyState.value = ModelReadyState.Downloading("cleanup model")
             _cleanupAvailable.value = denoiser.ensureModelReady()
 
@@ -83,6 +96,7 @@ class ClearScribeApp : Application() {
                 _modelReadyState.value = ModelReadyState.Downloading("transcription model")
                 sherpaTranscriber.ensureModelReady()
                 _modelReadyState.value = ModelReadyState.Ready
+                settings.modelsEverPrepared = true
             } catch (e: Throwable) {
                 Log.e("ClearScribeApp", "Transcription model setup failed", e)
                 _modelReadyState.value = ModelReadyState.Failed("transcription model", e)

@@ -14,9 +14,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.runtime.Composable
@@ -54,6 +57,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
+/** Simple three-screen nav — no back stack library needed for this small an app. */
+private sealed interface Screen {
+    data object List : Screen
+    data class Detail(val recording: Recording) : Screen
+    data object Settings : Screen
+}
+
 class MainActivity : ComponentActivity() {
 
     private val requestMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -70,39 +80,85 @@ class MainActivity : ComponentActivity() {
         val app = application as ClearScribeApp
 
         setContent {
-            MaterialTheme {
-                var selected by remember { mutableStateOf<Recording?>(null) }
+            val theme by app.settings.theme.collectAsState()
+
+            MaterialTheme(colors = colorsFor(theme)) {
+                var screen by remember { mutableStateOf<Screen>(Screen.List) }
                 val recordings by app.repository.observeAll().collectAsState(initial = emptyList())
                 val playback by app.player.state.collectAsState()
                 val modelState by app.modelReadyState.collectAsState()
                 val cleanupAvailable by app.cleanupAvailable.collectAsState()
 
-                val current = selected
-                if (current == null) {
-                    RecordingListScreen(
+                when (val current = screen) {
+                    is Screen.List -> RecordingListScreen(
                         recordings = recordings,
                         modelState = modelState,
                         cleanupAvailable = cleanupAvailable,
+                        theme = theme,
                         onStart = {
                             startService(Intent(this, RecorderService::class.java).setAction(RecorderService.ACTION_START))
                         },
                         onStop = {
                             startService(Intent(this, RecorderService::class.java).setAction(RecorderService.ACTION_STOP))
                         },
-                        onOpen = { selected = it },
+                        onOpen = { screen = Screen.Detail(it) },
+                        onOpenSettings = { screen = Screen.Settings },
                     )
-                } else {
-                    RecordingDetailScreen(
-                        recording = current,
+                    is Screen.Detail -> RecordingDetailScreen(
+                        recording = current.recording,
                         playback = playback,
-                        onPlayPause = { app.player.playOrToggle(current.audioPath) },
+                        theme = theme,
+                        onPlayPause = { app.player.playOrToggle(current.recording.audioPath) },
                         onSeek = { app.player.seekTo(it) },
-                        onShare = { shareRecording(this, current.audioPath) },
-                        onBack = { app.player.stop(); selected = null },
+                        onShare = { shareRecording(this, current.recording.audioPath) },
+                        onBack = { app.player.stop(); screen = Screen.List },
+                    )
+                    is Screen.Settings -> SettingsScreen(
+                        theme = theme,
+                        modelState = modelState,
+                        cleanupAvailable = cleanupAvailable,
+                        onThemeSelected = { app.settings.setTheme(it) },
+                        onPrepareModels = { app.prepareModels() },
+                        onBack = { screen = Screen.List },
                     )
                 }
             }
         }
+    }
+}
+
+/** Renders as a flat Wear Chip on One UI, a translucent GlassChip on Liquid Glass. */
+@Composable
+private fun AppChip(
+    theme: AppTheme,
+    onClick: () -> Unit,
+    label: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: (@Composable () -> Unit)? = null,
+    secondaryLabel: (@Composable () -> Unit)? = null,
+    enabled: Boolean = true,
+    primary: Boolean = false,
+) {
+    if (theme == AppTheme.LIQUID_GLASS) {
+        GlassChip(
+            onClick = onClick,
+            label = label,
+            icon = icon,
+            secondaryLabel = secondaryLabel,
+            enabled = enabled,
+            accent = if (primary) MaterialTheme.colors.primary else MaterialTheme.colors.secondary,
+            modifier = modifier,
+        )
+    } else {
+        Chip(
+            onClick = onClick,
+            label = label,
+            icon = icon,
+            secondaryLabel = secondaryLabel,
+            enabled = enabled,
+            colors = if (primary) ChipDefaults.primaryChipColors() else ChipDefaults.secondaryChipColors(),
+            modifier = modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -111,9 +167,11 @@ fun RecordingListScreen(
     recordings: List<Recording>,
     modelState: ModelReadyState,
     cleanupAvailable: Boolean?,
+    theme: AppTheme,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onOpen: (Recording) -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     var isRecording by remember { mutableStateOf(false) }
     val listState = rememberScalingLazyListState()
@@ -129,6 +187,9 @@ fun RecordingListScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             when (modelState) {
+                is ModelReadyState.NotRequested -> item {
+                    Text("Models not downloaded — open Settings", modifier = Modifier.padding(4.dp))
+                }
                 is ModelReadyState.Downloading -> item {
                     Text("Downloading ${modelState.what}…", modifier = Modifier.padding(4.dp))
                 }
@@ -146,7 +207,8 @@ fun RecordingListScreen(
                 }
             }
             item {
-                Chip(
+                AppChip(
+                    theme = theme,
                     onClick = {
                         if (isRecording) onStop() else onStart()
                         isRecording = !isRecording
@@ -158,17 +220,26 @@ fun RecordingListScreen(
                             contentDescription = null,
                         )
                     },
-                    colors = ChipDefaults.primaryChipColors(),
+                    primary = true,
                     enabled = modelState is ModelReadyState.Ready,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
             items(recordings) { recording ->
-                Chip(
+                AppChip(
+                    theme = theme,
                     onClick = { onOpen(recording) },
                     label = { Text(recording.title, maxLines = 1) },
                     secondaryLabel = { Text(formatMs(recording.durationMs.toInt()), maxLines = 1) },
-                    colors = ChipDefaults.secondaryChipColors(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            item {
+                AppChip(
+                    theme = theme,
+                    onClick = onOpenSettings,
+                    label = { Text("Settings") },
+                    icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -180,6 +251,7 @@ fun RecordingListScreen(
 fun RecordingDetailScreen(
     recording: Recording,
     playback: PlaybackState,
+    theme: AppTheme,
     onPlayPause: () -> Unit,
     onSeek: (Int) -> Unit,
     onShare: () -> Unit,
@@ -230,7 +302,8 @@ fun RecordingDetailScreen(
             }
             Text("${formatMs(position)} / ${formatMs(duration)}")
 
-            Chip(
+            AppChip(
+                theme = theme,
                 onClick = onPlayPause,
                 label = { Text(if (isThisFile && playback.isPlaying) "Pause" else "Play") },
                 icon = {
@@ -239,25 +312,114 @@ fun RecordingDetailScreen(
                         contentDescription = null,
                     )
                 },
-                colors = ChipDefaults.primaryChipColors(),
+                primary = true,
                 modifier = Modifier.fillMaxWidth(),
             )
-            Chip(
+            AppChip(
+                theme = theme,
                 onClick = onShare,
                 label = { Text("Share") },
                 icon = { Icon(Icons.Filled.Share, contentDescription = null) },
-                colors = ChipDefaults.secondaryChipColors(),
                 modifier = Modifier.fillMaxWidth(),
             )
-            Chip(
+            AppChip(
+                theme = theme,
                 onClick = onBack,
                 label = { Text("Back") },
-                colors = ChipDefaults.secondaryChipColors(),
                 modifier = Modifier.fillMaxWidth(),
             )
 
             if (recording.transcript.isNotBlank()) {
                 Text(recording.transcript, modifier = Modifier.padding(top = 8.dp))
+            }
+        }
+    }
+}
+
+@Composable
+fun SettingsScreen(
+    theme: AppTheme,
+    modelState: ModelReadyState,
+    cleanupAvailable: Boolean?,
+    onThemeSelected: (AppTheme) -> Unit,
+    onPrepareModels: () -> Unit,
+    onBack: () -> Unit,
+) {
+    val listState = rememberScalingLazyListState()
+
+    Scaffold(
+        timeText = { TimeText() },
+        vignette = { Vignette(vignettePosition = VignettePosition.TopAndBottom) },
+        positionIndicator = { PositionIndicator(scalingLazyListState = listState) },
+    ) {
+        ScalingLazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            item { Text("Theme", modifier = Modifier.padding(4.dp)) }
+            item {
+                AppChip(
+                    theme = theme,
+                    onClick = { onThemeSelected(AppTheme.GALAXY_ONE_UI) },
+                    label = { Text("Galaxy One UI") },
+                    icon = if (theme == AppTheme.GALAXY_ONE_UI) {
+                        { Icon(Icons.Filled.Check, contentDescription = null) }
+                    } else null,
+                    primary = theme == AppTheme.GALAXY_ONE_UI,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            item {
+                AppChip(
+                    theme = theme,
+                    onClick = { onThemeSelected(AppTheme.LIQUID_GLASS) },
+                    label = { Text("Liquid Glass") },
+                    icon = if (theme == AppTheme.LIQUID_GLASS) {
+                        { Icon(Icons.Filled.Check, contentDescription = null) }
+                    } else null,
+                    primary = theme == AppTheme.LIQUID_GLASS,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            item { Text("Models", modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)) }
+            item {
+                val statusText = when (modelState) {
+                    is ModelReadyState.NotRequested -> "Not downloaded"
+                    is ModelReadyState.Downloading -> "Downloading ${modelState.what}…"
+                    is ModelReadyState.Ready -> "Ready" + if (cleanupAvailable == false) " (cleanup unavailable on this device)" else ""
+                    is ModelReadyState.Failed -> "Failed: ${modelState.what}"
+                }
+                Text(statusText, modifier = Modifier.padding(4.dp))
+            }
+            item {
+                AppChip(
+                    theme = theme,
+                    onClick = onPrepareModels,
+                    label = {
+                        Text(
+                            when (modelState) {
+                                is ModelReadyState.Ready -> "Re-check models"
+                                is ModelReadyState.Downloading -> "Downloading…"
+                                else -> "Download models"
+                            }
+                        )
+                    },
+                    icon = { Icon(Icons.Filled.CloudDownload, contentDescription = null) },
+                    enabled = modelState !is ModelReadyState.Downloading,
+                    primary = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            item {
+                AppChip(
+                    theme = theme,
+                    onClick = onBack,
+                    label = { Text("Back") },
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                )
             }
         }
     }
