@@ -3,7 +3,12 @@ package dev.aarav.clearscribe.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -66,10 +71,10 @@ fun colorsFor(theme: AppTheme): Colors = when (theme) {
 @Composable
 fun GlassChip(
     onClick: () -> Unit,
-    label: @Composable () -> Unit,
+    label: @Composable RowScope.() -> Unit,
     modifier: Modifier = Modifier,
-    icon: (@Composable () -> Unit)? = null,
-    secondaryLabel: (@Composable () -> Unit)? = null,
+    icon: (@Composable BoxScope.() -> Unit)? = null,
+    secondaryLabel: (@Composable RowScope.() -> Unit)? = null,
     enabled: Boolean = true,
     accent: Color = MaterialTheme.colors.primary,
 ) {
@@ -89,12 +94,12 @@ fun GlassChip(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            icon()
-            androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))
+            Box { icon() }
+            Spacer(Modifier.width(8.dp))
         }
-        androidx.compose.foundation.layout.Column {
-            label()
-            secondaryLabel?.invoke()
+        Column {
+            Row { label() }
+            secondaryLabel?.let { sl -> Row { sl() } }
         }
     }
 }

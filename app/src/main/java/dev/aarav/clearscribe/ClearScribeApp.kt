@@ -69,7 +69,7 @@ class ClearScribeApp : Application() {
     override fun onCreate() {
         super.onCreate()
         val db = Room.databaseBuilder(this, ClearScribeDatabase::class.java, "clearscribe.db")
-            .fallbackToDestructiveMigration(dropAllTables = true)
+            .fallbackToDestructiveMigration()
             .build()
         repository = RecordingRepository(db.recordingDao())
         settings = SettingsStore(applicationContext)

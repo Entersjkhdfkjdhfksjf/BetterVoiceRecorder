@@ -132,10 +132,10 @@ class MainActivity : ComponentActivity() {
 private fun AppChip(
     theme: AppTheme,
     onClick: () -> Unit,
-    label: @Composable () -> Unit,
+    label: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
     modifier: Modifier = Modifier,
-    icon: (@Composable () -> Unit)? = null,
-    secondaryLabel: (@Composable () -> Unit)? = null,
+    icon: (@Composable androidx.compose.foundation.layout.BoxScope.() -> Unit)? = null,
+    secondaryLabel: (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)? = null,
     enabled: Boolean = true,
     primary: Boolean = false,
 ) {
